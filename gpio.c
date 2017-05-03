@@ -4,13 +4,13 @@
 
 #define NUM 4
 
+int i;
+char buf[1023];
 FILE *files[NUM];
 struct pollfd fds[NUM] = {};
 char values[NUM];
 
 void setup(int i, int n) {
-	char buf[255];
-
 	FILE *export = fopen("/sys/class/gpio/export", "w");
 	fprintf(export, "%d", n);
 	fclose(export);
@@ -31,22 +31,18 @@ void setup(int i, int n) {
 }
 
 int main(int argc, char **argv) {
-	for (int i = 0; i < NUM; ++i)
+	for (i = 0; i < NUM; ++i)
 		setup(i, 0 + i);
 
 	while (1) {
-		printf("values: ");
-		for (int i = 0; i < NUM; ++i) {
+		for (i = 0; i < NUM; ++i) {
 			fseek(files[i], 0, SEEK_SET);
 			fread(&values[i], sizeof(values[i]), 1, files[i]);
-			printf("%c", values[i]);
 		}
-		printf("\n");
-		int p = poll(fds, NUM, 1000 * 30);
-		printf("poll: %d\n", p);
+		poll(fds, NUM, 1000 * 30);
 	}
 
-	for (int i = 0; i < NUM; ++i)
+	for (i = 0; i < NUM; ++i)
 		fclose(files[i]);
 
 	return 0;
