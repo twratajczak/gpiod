@@ -11,9 +11,13 @@ char buf[1023];
 FILE *files[NUM];
 struct pollfd fds[NUM] = {};
 char values[NUM];
+int errors = 0;
 
 CURL *ch;
 CURLcode res;
+
+char *url_template = "http://example.com?k=%s&e=%d&gpio=";
+char *url_key = "auth_key";
 
 void setup(int i, int n) {
 	FILE *export = fopen("/sys/class/gpio/export", "w");
@@ -36,7 +40,7 @@ void setup(int i, int n) {
 }
 
 void submit() {
-	strcpy(buf, "http://example.com?gpio=");
+	sprintf(buf, url_template, url_key, errors);
 	len = strlen(buf);
 	for (i = 0; i < NUM; ++i) {
 		buf[len++] = values[i];
@@ -47,7 +51,9 @@ void submit() {
 	curl_easy_setopt(ch, CURLOPT_URL, buf);
 	res = curl_easy_perform(ch);
 	if (res != CURLE_OK)
-		fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+		++errors;
+	else
+		errors = 0;
 	curl_easy_cleanup(ch);
 }
 
