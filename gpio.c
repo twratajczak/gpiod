@@ -1,33 +1,53 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <poll.h>
 
-int main(int argc, char **argv) {
+#define NUM 4
+
+FILE *files[NUM];
+struct pollfd fds[NUM] = {};
+char values[NUM];
+
+void setup(int i, int n) {
+	char buf[255];
+
 	FILE *export = fopen("/sys/class/gpio/export", "w");
-	fprintf(export, "19");
+	fprintf(export, "%d", n);
 	fclose(export);
 
-	FILE *direction = fopen("/sys/class/gpio/gpio19/direction", "w");
+	sprintf(buf, "/sys/class/gpio/gpio%d/direction", n);
+	FILE *direction = fopen(buf, "w");
 	fprintf(direction, "in");
 	fclose(direction);
-	FILE *edge = fopen("/sys/class/gpio/gpio19/edge", "w");
+	sprintf(buf, "/sys/class/gpio/gpio%d/edge", n);
+	FILE *edge = fopen(buf, "w");
 	fprintf(edge, "both");
 	fclose(edge);
 
-	FILE *value = fopen("/sys/class/gpio/gpio19/value", "r");
-	struct pollfd pfd;
-	pfd.fd = fileno(value);
-	pfd.events = POLLPRI | POLLERR;
+	sprintf(buf, "/sys/class/gpio/gpio%d/value", n);
+	files[i] = fopen(buf, "r");
+	fds[i].fd = fileno(files[i]);
+	fds[i].events = POLLPRI | POLLERR;
+}
+
+int main(int argc, char **argv) {
+	for (int i = 0; i < NUM; ++i)
+		setup(i, 0 + i);
 
 	while (1) {
-		char buf;
-		fseek(value, 0, SEEK_SET);
-		fread(&buf, sizeof(buf), 1, value);
-		printf("value: %c\n", buf);
-		int p = poll(&pfd, 1, 1000 * 15);
+		printf("values: ");
+		for (int i = 0; i < NUM; ++i) {
+			fseek(files[i], 0, SEEK_SET);
+			fread(&values[i], sizeof(values[i]), 1, files[i]);
+			printf("%c", values[i]);
+		}
+		printf("\n");
+		int p = poll(fds, NUM, 1000 * 30);
 		printf("poll: %d\n", p);
 	}
 
-	fclose(value);
+	for (int i = 0; i < NUM; ++i)
+		fclose(files[i]);
 
 	return 0;
 }
