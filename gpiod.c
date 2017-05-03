@@ -20,7 +20,7 @@ CURLcode curl_res;
 int curl_errors;
 
 char url[1024] = "";
-int poll_timeout_ms = 0;
+int poll_timeout_ms = 1000 * 60 * 15;
 
 struct uci_ptr uci_ptr;
 struct uci_context *uci_ctx;
@@ -47,7 +47,7 @@ int process_config() {
 	if (uci_ptr.flags & UCI_LOOKUP_COMPLETE)
 		poll_timeout_ms = 1000 * atoi(uci_ptr.o->v.string);
 	if (!poll_timeout_ms)
-		poll_timeout_ms = 1000 * 60 * 15;
+		poll_timeout_ms = -1;
 
 	strcpy(uci_path, "gpiod.@gpiod[0].nodes");
 	uci_lookup_ptr(uci_ctx, &uci_ptr, uci_path, true);
