@@ -3,13 +3,14 @@
 #include <poll.h>
 #include <curl/curl.h>
 #include <string.h>
+#include <uci.h>
 
 #define MAX_NUM 16
 int num = 0;
 int num_map[MAX_NUM];
 
 int i, len;
-char buf[2048];
+char buf[4096];
 FILE *files[MAX_NUM];
 struct pollfd fds[MAX_NUM] = {};
 char values[MAX_NUM];
@@ -18,11 +19,52 @@ int errors = 0;
 CURL *ch;
 CURLcode res;
 
-char *url_template = "http://example.com?k=%s&e=%d&gpio=";
-char *url_key = "auth_key";
-int poll_ms = 1000 * 60 * 15;
+char *url_template = "%s&e=%d&gpio=";
+char url[1024] = "";
+int poll_timeout_ms = 0;
 
-void setup(int i) {
+struct uci_ptr uci_ptr;
+struct uci_context *uci_ctx;
+char uci_path[256];
+char *uci_buf;
+
+int setup_config() {
+	uci_ctx = uci_alloc_context();
+	if (!uci_ctx) {
+		fprintf(stderr, "Failed to alloc UCI ctx\n");
+		return 1;
+	}
+
+	strcpy(uci_path, "gpiod.@gpiod[0].url");
+	if ((uci_lookup_ptr(uci_ctx, &uci_ptr, uci_path, true) != UCI_OK) || !uci_ptr.o || !uci_ptr.o->v.string) {
+		fprintf(stderr, "Failed to lookup '%s'\n", uci_path);
+		uci_free_context(uci_ctx);
+		return 2;
+	}
+	if (uci_ptr.flags & UCI_LOOKUP_COMPLETE)
+		strncpy(url, uci_ptr.o->v.string, 1023);
+
+	strcpy(uci_path, "gpiod.@gpiod[0].timeout");
+	uci_lookup_ptr(uci_ctx, &uci_ptr, uci_path, true);
+	if (uci_ptr.flags & UCI_LOOKUP_COMPLETE)
+		poll_timeout_ms = 1000 * atoi(uci_ptr.o->v.string);
+	if (!poll_timeout_ms)
+		poll_timeout_ms = 1000 * 60 * 15;
+
+	strcpy(uci_path, "gpiod.@gpiod[0].nodes");
+	uci_lookup_ptr(uci_ctx, &uci_ptr, uci_path, true);
+	if (uci_ptr.flags & UCI_LOOKUP_COMPLETE) {
+		strncpy(buf, uci_ptr.o->v.string, 1023);
+		buf[1024] = '\0';
+		for (uci_buf = strtok(buf, " "); uci_buf; uci_buf = strtok(NULL, " "))
+			num_map[num++] = atoi(uci_buf);
+	}
+
+	uci_free_context(uci_ctx);
+	return 0;
+}
+
+void setup_gpio(int i) {
 	FILE *export = fopen("/sys/class/gpio/export", "w");
 	fprintf(export, "%d", num_map[i]);
 	fclose(export);
@@ -43,7 +85,7 @@ void setup(int i) {
 }
 
 void submit() {
-	sprintf(buf, url_template, url_key, errors);
+	sprintf(buf, url_template, url, errors);
 	len = strlen(buf);
 	for (i = 0; i < num; ++i) {
 		buf[len++] = values[i];
@@ -61,22 +103,19 @@ void submit() {
 }
 
 int main(int argc, char **argv) {
-	num_map[0] = 0;
-	num_map[1] = 1;
-	num_map[2] = 2;
-	num_map[3] = 3;
-	num = 4;
+	if (setup_config())
+		return 1;
 
 	for (i = 0; i < num; ++i)
-		setup(i);
+		setup_gpio(i);
 
-	while (1) {
+	while (num) {
 		for (i = 0; i < num; ++i) {
 			fseek(files[i], 0, SEEK_SET);
 			fread(&values[i], sizeof(values[i]), 1, files[i]);
 		}
 		submit();
-		poll(fds, num, poll_ms);
+		poll(fds, num, poll_timeout_ms);
 	}
 
 	for (i = 0; i < num; ++i)
